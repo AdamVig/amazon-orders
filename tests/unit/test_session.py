@@ -286,7 +286,8 @@ class TestSession(UnitTestCase):
                       "their end, or may be temporarily blocking your requests.", str(cm.exception))
 
     @responses.activate
-    def test_captcha_1(self):
+    @patch("builtins.input", return_value="FBJRAC")
+    def test_captcha_1(self, input_mock):
         # GIVEN
         self.given_unauthenticated_home_page()
         with open(os.path.join(self.RESOURCES_DIR, "auth", "signin.html"), "r", encoding="utf-8") as f:
@@ -308,14 +309,6 @@ class TestSession(UnitTestCase):
                 f"{self.test_config.constants.BASE_URL}/ap/cvf/request",
                 body=f.read(),
                 status=200
-            )
-        with open(os.path.join(self.RESOURCES_DIR, "auth", "captcha_easy.jpg"), "rb") as f:
-            resp4 = responses.add(
-                responses.GET,
-                "https://opfcaptcha-prod.s3.amazonaws.com/d32ff4fa043d4f969a1693adfb5d663a.jpg",
-                body=f.read(),
-                headers={"Content-Type": "image/jpeg"},
-                status=200,
             )
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r", encoding="utf-8") as f:
             request_data = {
@@ -354,11 +347,11 @@ class TestSession(UnitTestCase):
         self.assertEqual(1, resp1.call_count)
         self.assertEqual(1, resp2.call_count)
         self.assertEqual(1, resp3.call_count)
-        self.assertEqual(1, resp4.call_count)
         self.assertEqual(1, resp5.call_count)
 
     @responses.activate
-    def test_captcha_2(self):
+    @patch("builtins.input", return_value="FBJRAC")
+    def test_captcha_2(self, input_mock):
         # GIVEN
         self.given_unauthenticated_home_page()
         with open(os.path.join(self.RESOURCES_DIR, "auth", "signin.html"), "r", encoding="utf-8") as f:
@@ -375,15 +368,7 @@ class TestSession(UnitTestCase):
                 body=f.read(),
                 status=200,
             )
-        with open(os.path.join(self.RESOURCES_DIR, "auth", "captcha_easy.jpg"), "rb") as f:
-            resp3 = responses.add(
-                responses.GET,
-                "https://images-na.ssl-images-amazon.com/captcha/ddwwidnf/Captcha_gmwackhtzu.jpg",
-                body=f.read(),
-                headers={"Content-Type": "image/jpeg"},
-                status=200,
-            )
-        resp4 = responses.add(
+        resp3 = responses.add(
             responses.GET,
             f"{self.test_config.constants.BASE_URL}/errors/validateCaptcha",
             status=302,
@@ -396,7 +381,7 @@ class TestSession(UnitTestCase):
         )
         # Successful Captcha redirects us back to the home page, which should restart the auth flow
         with open(os.path.join(self.RESOURCES_DIR, "index.html"), "r", encoding="utf-8") as f:
-            resp5 = responses.add(
+            resp4 = responses.add(
                 responses.GET,
                 f"{self.test_config.constants.BASE_URL}/",
                 body=f.read(),
@@ -413,11 +398,11 @@ class TestSession(UnitTestCase):
         self.assertEqual(1, resp2.call_count)
         self.assertEqual(1, resp3.call_count)
         self.assertEqual(1, resp4.call_count)
-        self.assertEqual(1, resp5.call_count)
         self.given_login_responses_success()
 
     @responses.activate
-    def test_captcha_3(self):
+    @patch("builtins.input", return_value="KACXFB")
+    def test_captcha_3(self, input_mock):
         # GIVEN
         self.given_unauthenticated_home_page()
         with open(os.path.join(self.RESOURCES_DIR, "auth", "signin.html"), "r", encoding="utf-8") as f:
@@ -434,16 +419,8 @@ class TestSession(UnitTestCase):
                 body=f.read(),
                 status=200,
             )
-        with open(os.path.join(self.RESOURCES_DIR, "auth", "captcha_easy_2.jpg"), "rb") as f:
-            resp3 = responses.add(
-                responses.GET,
-                "https://images-na.ssl-images-amazon.com/captcha/cdkxpfei/Captcha_yzifyqjijr.jpg",
-                body=f.read(),
-                headers={"Content-Type": "image/jpeg"},
-                status=200,
-            )
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r", encoding="utf-8") as f:
-            resp4 = responses.add(
+            resp3 = responses.add(
                 responses.GET,
                 f"{self.test_config.constants.BASE_URL}/errors/validateCaptcha",
                 body=f.read(),
@@ -460,13 +437,10 @@ class TestSession(UnitTestCase):
         self.assertEqual(1, resp1.call_count)
         self.assertEqual(1, resp2.call_count)
         self.assertEqual(1, resp3.call_count)
-        self.assertEqual(1, resp4.call_count)
 
-    @unittest.skipIf(sys.platform == "win32", reason="Windows does not respect PIL's show() method in tests")
     @responses.activate
     @patch("builtins.input")
-    @patch("PIL.Image.Image.show")
-    def test_captcha_1_hard(self, show_mock, input_mock):
+    def test_captcha_1_hard(self, input_mock):
         # GIVEN
         self.given_unauthenticated_home_page()
         with open(os.path.join(self.RESOURCES_DIR, "auth", "signin.html"), "r", encoding="utf-8") as f:
@@ -489,16 +463,8 @@ class TestSession(UnitTestCase):
                 body=f.read(),
                 status=200
             )
-        with open(os.path.join(self.RESOURCES_DIR, "auth", "captcha_hard.jpg"), "rb") as f:
-            resp4 = responses.add(
-                responses.GET,
-                "https://opfcaptcha-prod.s3.amazonaws.com/d32ff4fa043d4f969a1693adfb5d663a.jpg",
-                body=f.read(),
-                headers={"Content-Type": "image/jpeg"},
-                status=200,
-            )
         with open(os.path.join(self.RESOURCES_DIR, "orders", "order-history-2018-0.html"), "r", encoding="utf-8") as f:
-            resp5 = responses.add(
+            resp4 = responses.add(
                 responses.POST,
                 f"{self.test_config.constants.BASE_URL}/ap/cvf/verify",
                 body=f.read(),
@@ -514,11 +480,11 @@ class TestSession(UnitTestCase):
         self.assertEqual(1, resp1.call_count)
         self.assertEqual(1, resp2.call_count)
         self.assertEqual(1, resp3.call_count)
-        self.assertEqual(2, resp4.call_count)
-        self.assertEqual(1, resp5.call_count)
+        self.assertEqual(1, resp4.call_count)
 
     @responses.activate
-    def test_captcha_loop_retries_exhausted(self):
+    @patch("builtins.input", return_value="FBJRAC")
+    def test_captcha_loop_retries_exhausted(self, input_mock):
         # GIVEN
         self.given_unauthenticated_home_page()
         with open(os.path.join(self.RESOURCES_DIR, "auth", "signin.html"), "r", encoding="utf-8") as f:
@@ -535,15 +501,7 @@ class TestSession(UnitTestCase):
                 body=f.read(),
                 status=200,
             )
-        with open(os.path.join(self.RESOURCES_DIR, "auth", "captcha_easy.jpg"), "rb") as f:
-            resp3 = responses.add(
-                responses.GET,
-                "https://images-na.ssl-images-amazon.com/captcha/ddwwidnf/Captcha_gmwackhtzu.jpg",
-                body=f.read(),
-                headers={"Content-Type": "image/jpeg"},
-                status=200,
-            )
-        resp4 = responses.add(
+        resp3 = responses.add(
             responses.GET,
             f"{self.test_config.constants.BASE_URL}/errors/validateCaptcha",
             status=302,
@@ -556,7 +514,7 @@ class TestSession(UnitTestCase):
         )
         # Successful Captcha redirects us back to the home page, which should restart the auth flow
         with open(os.path.join(self.RESOURCES_DIR, "index.html"), "r", encoding="utf-8") as f:
-            resp5 = responses.add(
+            resp4 = responses.add(
                 responses.GET,
                 f"{self.test_config.constants.BASE_URL}/",
                 body=f.read(),
@@ -573,7 +531,6 @@ class TestSession(UnitTestCase):
         self.assertEqual(5, resp2.call_count)
         self.assertEqual(5, resp3.call_count)
         self.assertEqual(5, resp4.call_count)
-        self.assertEqual(5, resp5.call_count)
         self.assertIn("Authentication attempts exhausted.", str(cm.exception))
 
     @responses.activate

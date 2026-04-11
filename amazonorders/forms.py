@@ -3,13 +3,10 @@ __license__ = "MIT"
 
 import re
 from abc import ABC
-from io import BytesIO
 from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 from urllib.parse import urlparse
 
 import pyotp
-from PIL import Image
-from amazoncaptcha import AmazonCaptcha
 from bs4 import Tag
 from requests import Response
 
@@ -25,10 +22,6 @@ if TYPE_CHECKING:
 class AuthForm(ABC):
     """
     The base class of an authentication ``<form>`` that can be submitted.
-
-    The base implementation will attempt to auto-solve Captcha. If this fails, it will
-    use the default image view to show the Captcha prompt, and it will also pass the
-    image URL to :func:`~amazonorders.session.IODefault.prompt` as ``img_url``.
     """
 
     def __init__(self,
@@ -131,17 +124,9 @@ class AuthForm(ABC):
                 "Call AuthForm.select_form() first."
             )  # pragma: no cover
 
-        captcha_response = AmazonCaptcha.fromlink(url).solve()
-        if not captcha_response or captcha_response.lower() == "not solved":
-            img_response = self.amazon_session.session.get(url)
-            img = Image.open(BytesIO(img_response.content))
-            img.show()
-
-            self.amazon_session.io.echo("Info: The Captcha couldn't be auto-solved.")
-
-            captcha_response = self.amazon_session.io.prompt("Enter the characters shown in the image",
-                                                             img_url=url)
-            self.amazon_session.io.echo("")
+        captcha_response = self.amazon_session.io.prompt("Enter the characters shown in the image",
+                                                         img_url=url)
+        self.amazon_session.io.echo("")
 
         return captcha_response
 
