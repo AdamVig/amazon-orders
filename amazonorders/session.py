@@ -74,7 +74,8 @@ class AmazonSession:
                  io: IODefault = IODefault(),
                  config: Optional[AmazonOrdersConfig] = None,
                  auth_forms: Optional[List] = None,
-                 otp_secret_key: Optional[str] = None) -> None:
+                 otp_secret_key: Optional[str] = None,
+                 use_browser: bool = False) -> None:
         if not config:
             config = AmazonOrdersConfig()
         if not auth_forms:
@@ -115,6 +116,9 @@ class AmazonSession:
         #: The list of form implementations to use with authentication. If a value is passed for this when
         #: instantiating an AmazonSession, ensure that list is populated with the default form implementations.
         self.auth_forms: List[AuthForm] = auth_forms
+        #: When ``True``, use a headless Camoufox browser for the login flow. Handles WAF challenges
+        #: natively. Requires ``pip install amazon-orders[browser]`` and ``python -m camoufox fetch``.
+        self.use_browser: bool = use_browser
 
         #: The shared session to be used across all requests.
         self.session: Session = self._create_session()
@@ -220,11 +224,20 @@ class AmazonSession:
         enabled for your account), Captcha challenges, and any other forms in
         :attr:`~amazonorders.session.AmazonSession.auth_forms`.
 
+        When :attr:`use_browser` is ``True``, a headless Camoufox browser is used instead of the
+        ``requests``-based flow. This handles WAF challenges natively. Requires
+        ``pip install amazon-orders[browser]`` and ``python -m camoufox fetch``.
+
         If successful, ``is_authenticated`` will be set to ``True``.
 
         If existing session data is already persisted, calling this function will still attempt to reauthenticate to
         refresh it.
         """
+        if self.use_browser:
+            from amazonorders.browser import browser_login
+            browser_login(self)
+            return
+
         self._provision_cookies()
 
         last_response = self.get(self.config.constants.SIGN_IN_URL,

@@ -53,6 +53,9 @@ class IOClick(IODefault):
 @click.option("--debug", is_flag=True, default=False,
               help="Enable debugging and send output to "
                    "command line.")
+@click.option("--browser", is_flag=True, default=False,
+              help="Use a headless Camoufox browser for login (handles WAF challenges). "
+                   "Requires: pip install amazon-orders[browser] && python -m camoufox fetch")
 @click.option("--config-path",
               help="The config path.")
 @click.option("--max-auth-attempts",
@@ -99,6 +102,7 @@ def amazon_orders_cli(ctx: Context,
     amazon_session = AmazonSession(username,
                                    password,
                                    debug=kwargs["debug"],
+                                   use_browser=kwargs.get("browser", False),
                                    io=IOClick(),
                                    config=ctx.obj["conf"])
 
