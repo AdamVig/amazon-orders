@@ -65,7 +65,6 @@ def browser_login(amazon_session: "AmazonSession") -> None:
     password = amazon_session.password
     otp_secret_key = amazon_session.otp_secret_key
     debug = amazon_session.debug
-    headless = not debug
 
     sign_in_url = (config.constants.SIGN_IN_URL
                    + "?" + urlencode(config.constants.SIGN_IN_QUERY_PARAMS))
@@ -73,7 +72,7 @@ def browser_login(amazon_session: "AmazonSession") -> None:
     config_dir = os.path.dirname(config.cookie_jar_path)
     browser_state_path = os.path.join(config_dir, "browser_state.json")
 
-    logger.debug("Starting Camoufox browser login (headless=%s)", headless)
+    logger.debug("Starting Camoufox browser login")
 
     # Map sys.platform to the OS strings Camoufox expects
     _platform_map = {"linux": "linux", "darwin": "macos", "win32": "windows"}
@@ -81,7 +80,7 @@ def browser_login(amazon_session: "AmazonSession") -> None:
 
     # Camoufox prints "Skipping unknown patch ..." to stdout; suppress it
     with contextlib.redirect_stdout(io.StringIO()):
-        cm = Camoufox(headless=headless, os=camoufox_os, locale="en-US")
+        cm = Camoufox(headless=True, os=camoufox_os, locale="en-US")
     with cm as browser:
         ctx_kwargs = {}
         if os.path.exists(browser_state_path):
