@@ -25,11 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Playwright selectors — support both old (/ap/signin) and new (/ax/claim) login flows
 _SEL_EMAIL = "#ap_email_login, input[name='email']:not([type='hidden'])"
-_SEL_CONTINUE = "#continue"
 _SEL_PASSWORD = "#ap_password, input[name='password']:not(.aok-hidden)"
-_SEL_SIGNIN = "#signInSubmit"
 _SEL_OTP = "#auth-mfa-otpcode, input[name='otpCode'], input[name='code']"
-_SEL_OTP_SUBMIT = "#auth-signin-button"
 _SEL_SKIP = "#auth-account-fixup-skip-link, #ap-account-fixup-skip-link"
 
 _CLAIM_ERROR_SELECTORS = (
@@ -44,6 +41,8 @@ _PASSWORD_ERROR_SELECTORS = (
     "#auth-password-missing-alert",
     "#auth-email-missing-alert",
 )
+_GLOBAL_ERROR_SELECTORS = ("#auth-error-message-box",)
+_FORM_SUBMIT_TIMEOUT = 30
 
 
 class BrowserState(Enum):
@@ -163,6 +162,10 @@ def _run_login_flow(  # noqa: PLR0912
             if state not in {BrowserState.AUTHENTICATED, BrowserState.UNKNOWN}:
                 _save_debug_page(page, config, f"browser_{state.value}", amazon_session.debug)
 
+        error = _visible_error_text(page, _GLOBAL_ERROR_SELECTORS)
+        if error:
+            raise AmazonOrdersAuthError(f"Error from Amazon: {error}")
+
         if state is BrowserState.AUTHENTICATED:
             logger.debug("Browser: authenticated (url=%s)", page.url.split("?")[0].rstrip("/"))
             return
@@ -212,50 +215,55 @@ def _detect_state(page, base_url: str) -> BrowserState:
 
 def _handle_claim_page(page, amazon_session: "AmazonSession", base_url: str) -> None:
     """Submit the email/claim step and wait for the next state."""
-    page.wait_for_selector(_SEL_EMAIL, state="visible", timeout=60000)
-    page.fill(_SEL_EMAIL, amazon_session.username)
-    page.click(_SEL_CONTINUE, no_wait_after=True)
-    _wait_for_state_change(
+    claim_input = _first_locator(page, _SEL_EMAIL)
+    claim_input.wait_for(state="visible", timeout=60000)
+    claim_input.fill(amazon_session.username)
+    _submit_input_form(
+        claim_input,
         page,
         BrowserState.CLAIM,
         amazon_session.config,
         amazon_session.debug,
         base_url,
-        error_selectors=_CLAIM_ERROR_SELECTORS,
+        _CLAIM_ERROR_SELECTORS,
     )
 
 
 def _handle_password_page(page, amazon_session: "AmazonSession", base_url: str) -> None:
     """Submit the password step and wait for the next state."""
     _save_debug_page(page, amazon_session.config, "browser_password", amazon_session.debug)
-    page.fill(_SEL_PASSWORD, amazon_session.password)
-    page.click(_SEL_SIGNIN, no_wait_after=True)
-    _wait_for_state_change(
+    password_input = _first_locator(page, _SEL_PASSWORD)
+    password_input.fill(amazon_session.password)
+    _submit_input_form(
+        password_input,
         page,
         BrowserState.PASSWORD,
         amazon_session.config,
         amazon_session.debug,
         base_url,
-        error_selectors=_PASSWORD_ERROR_SELECTORS,
+        _PASSWORD_ERROR_SELECTORS,
     )
 
 
 def _handle_mfa_page(page, amazon_session: "AmazonSession", base_url: str) -> None:
     """Generate and submit a TOTP code, then wait for Amazon's next step."""
-    _fill_otp(page, amazon_session.otp_secret_key)
-    _wait_for_state_change(
+    otp_input = _first_locator(page, _SEL_OTP)
+    otp_input.fill(_generate_otp(amazon_session.otp_secret_key), timeout=5000)
+    _submit_input_form(
+        otp_input,
         page,
         BrowserState.MFA,
         amazon_session.config,
         amazon_session.debug,
         base_url,
+        _PASSWORD_ERROR_SELECTORS,
     )
 
 
 def _handle_fixup_page(page, config, debug: bool, base_url: str) -> None:
     """Skip trusted-device/account-fixup prompts when Amazon offers them."""
     try:
-        page.click(_SEL_SKIP, timeout=2000, no_wait_after=True)
+        _first_locator(page, _SEL_SKIP).click(timeout=2000, no_wait_after=True)
     except Exception:
         pass
     _wait_for_state_change(page, BrowserState.FIXUP, config, debug, base_url)
@@ -274,6 +282,7 @@ def _wait_for_state_change(
     base_url: str,
     timeout: int = 30,
     error_selectors: tuple[str, ...] = (),
+    raise_on_timeout: bool = True,
 ) -> BrowserState:
     """Wait for Amazon to leave the current state or surface a visible error."""
     import time
@@ -301,6 +310,9 @@ def _wait_for_state_change(
 
         page.wait_for_timeout(500)
 
+    if not raise_on_timeout:
+        return current_state
+
     debug_path = _save_debug_page(page, config, f"browser_{current_state.value}_timeout", debug, force=True)
     raise AmazonOrdersAuthError(
         f"Browser login timed out during {current_state.value} step. "
@@ -309,14 +321,23 @@ def _wait_for_state_change(
 
 
 def _page_has_password_input(page) -> bool:
-    """Return True when the current page is already the password step."""
-    return _is_visible(page, _SEL_PASSWORD)
+    """Return True when the current page has entered the password step."""
+    try:
+        return page.locator(_SEL_PASSWORD).count() > 0
+    except Exception:
+        return False
+
+
+def _first_locator(page, selector: str):
+    """Return the first locator match for the selector."""
+    return page.locator(selector).first
 
 
 def _is_visible(page, selector: str) -> bool:
-    """Safely check whether the first matching element is visible."""
+    """Safely check whether any matching element is visible."""
     try:
-        return page.locator(selector).first.is_visible()
+        locator = page.locator(selector)
+        return any(locator.nth(i).is_visible() for i in range(locator.count()))
     except Exception:
         return False
 
@@ -334,8 +355,53 @@ def _visible_error_text(page, selectors: tuple[str, ...]) -> str | None:
     return None
 
 
-def _fill_otp(page, otp_secret_key) -> None:
-    """Generate and submit a TOTP code."""
+def _submit_input_form(
+    input_locator,
+    page,
+    current_state: BrowserState,
+    config,
+    debug: bool,
+    base_url: str,
+    error_selectors: tuple[str, ...],
+):
+    """Submit the form associated with the input."""
+    from amazonorders.exception import AmazonOrdersAuthError
+
+    logger.debug("Browser: submitting %s form", current_state.value)
+    try:
+        input_locator.evaluate(
+            """
+            (input) => {
+                const form = input.form;
+                if (!form) {
+                    throw new Error("Input is not associated with a form");
+                }
+                if (typeof form.requestSubmit === "function") {
+                    form.requestSubmit();
+                    return;
+                }
+                form.submit();
+            }
+            """
+        )
+    except Exception as exc:
+        raise AmazonOrdersAuthError(
+            f"Browser login: could not submit the {current_state.value} form."
+        ) from exc
+
+    return _wait_for_state_change(
+        page,
+        current_state,
+        config,
+        debug,
+        base_url,
+        timeout=_FORM_SUBMIT_TIMEOUT,
+        error_selectors=error_selectors,
+    )
+
+
+def _generate_otp(otp_secret_key) -> str:
+    """Generate a TOTP code for the current MFA challenge."""
     from amazonorders.exception import AmazonOrdersAuthError
     import pyotp
 
@@ -345,13 +411,8 @@ def _fill_otp(page, otp_secret_key) -> None:
             "Set AMAZON_OTP_SECRET_KEY or pass otp_secret_key= to AmazonSession."
         )
 
-    otp = pyotp.TOTP(otp_secret_key.replace(" ", "")).now()
-    logger.debug("Browser: submitting OTP")
-    try:
-        page.fill(_SEL_OTP, otp, timeout=5000)
-        page.click(_SEL_OTP_SUBMIT, timeout=5000, no_wait_after=True)
-    except Exception as exc:
-        raise AmazonOrdersAuthError("Browser login: could not fill OTP input.") from exc
+    logger.debug("Browser: generating OTP")
+    return pyotp.TOTP(otp_secret_key.replace(" ", "")).now()
 
 
 def _is_authenticated(url: str, base_url: str) -> bool:
