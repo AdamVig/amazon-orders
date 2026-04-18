@@ -335,7 +335,8 @@ def _wait_for_state_change(
 def _page_has_password_input(page) -> bool:
     """Return True when the current page has entered the password step."""
     try:
-        return page.locator(_SEL_PASSWORD).count() > 0
+        # Use is_visible to match a password field present but hidden in the DOM
+        return _is_visible(page, _SEL_PASSWORD)
     except Exception:
         return False
 
