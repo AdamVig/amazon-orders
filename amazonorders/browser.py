@@ -42,7 +42,7 @@ _PASSWORD_ERROR_SELECTORS = (
     "#auth-email-missing-alert",
 )
 _GLOBAL_ERROR_SELECTORS = ("#auth-error-message-box",)
-_FORM_SUBMIT_TIMEOUT = 30
+_FORM_SUBMIT_TIMEOUT = 60
 
 
 class BrowserState(Enum):
@@ -290,6 +290,7 @@ def _wait_for_state_change(
 
     last_url = page.url
     deadline = time.monotonic() + timeout
+    last_log_time = time.monotonic()  # track when we last emitted a "still waiting" log
 
     while time.monotonic() < deadline:
         error = _visible_error_text(page, error_selectors)
@@ -307,6 +308,17 @@ def _wait_for_state_change(
             last_url = page.url
             logger.debug("Browser: %s still in progress at %s", current_state.value, page.url)
             _save_debug_page(page, config, f"browser_{current_state.value}_poll", debug)
+
+        # Every 10 seconds, log what state we're still seeing so timeouts are diagnosable
+        now = time.monotonic()
+        if now - last_log_time >= 10:
+            logger.debug(
+                "Browser: still waiting for %s to change (detected=%s, url=%s)",
+                current_state.value,
+                next_state.value,
+                page.url,
+            )
+            last_log_time = now
 
         page.wait_for_timeout(500)
 
